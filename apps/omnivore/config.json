@@ -1,0 +1,18 @@
+{
+  "$schema": "../schema.json",
+  "name": "Omnivore",
+  "available": true,
+  "exposable": true,
+  "port": 3000,
+  "id": "omnivore",
+  "tipi_version": 1,
+  "version": "latest",
+  "categories": [
+    "utilities"
+  ],
+  "description": "Omnivore is a complete, open source read-it-later solution for people who like text.",
+  "short_desc": "Omnivore is a complete, open source read-it-later solution for people who like text.",
+  "author": "omnivore-app",
+  "source": "https://github.com/omnivore-app/omnivore",
+  "form_fields": []
+}

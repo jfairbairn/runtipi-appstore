@@ -1,0 +1,133 @@
+version: "3.7"
+services:
+  elasticsearch:
+    image: "elasticsearch:8.10.2"
+    container_name: "omnivore-elastic"
+    expose:
+      - 9300
+      - 9200
+    environment:
+      - discovery.type=single-node
+    healthcheck:
+      # test: [ "CMD", "curl",  "--fail", "http://elasticsearch:9200/_cluster/health?wait_for_status=green&timeout=1s", "||", "exit", "1" ]
+      test: "exit 0"
+      interval: 5s
+      timeout: 3s
+
+  postgres:
+    image: "postgres:12.8"
+    container_name: "omnivore-postgres"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=omnivore
+      - PG_POOL_MAX=20
+    healthcheck:
+      test: "exit 0"
+      interval: 2s
+      timeout: 12s
+      retries: 3
+    expose:
+      - 5432
+
+  migrate:
+    image: "jfairbairn/omnivore-migrate:latest"
+    container_name: "omnivore-migrate"
+    command: '/bin/sh ./packages/db/setup.sh' # Also create a demo user with email: demo@omnivore.app, password: demo
+    environment:
+      - PGPASSWORD=postgres
+      - PG_HOST=postgres
+      - PG_USER=postgres
+      - PG_PASSWORD=postgres
+      - PG_DB=omnivore
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    image: "jfairbairn/omnivore-api:latest"
+    container_name: "omnivore-api"
+    ports:
+      - "4000:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 0.0.0.0 8080 || exit 1"]
+      interval: 15s
+      timeout: 90s
+    environment:
+      - API_ENV=local
+      - PG_HOST=postgres
+      - PG_USER=app_user
+      - PG_PASSWORD=app_pass
+      - PG_DB=omnivore
+      - PG_PORT=5432
+      - PG_POOL_MAX=20
+      - JAEGER_HOST=jaeger
+      - IMAGE_PROXY_SECRET=some-secret
+      - JWT_SECRET=some_secret
+      - SSO_JWT_SECRET=some_sso_secret
+      - CLIENT_URL=http://localhost:3000
+      - GATEWAY_URL=http://localhost:8080/api
+      - CONTENT_FETCH_URL=http://content-fetch:8080/?token=some_token
+      - ELASTIC_URL=http://elasticsearch:9200
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      elasticsearch:
+        condition: service_healthy
+
+  web:
+    image: "jfairbairn/omnivore-web:latest"
+    container_name: "omnivore-web"
+    ports:
+      - "${APP_PORT}:8080"
+    environment:
+      - NEXT_PUBLIC_APP_ENV=prod
+      - NEXT_PUBLIC_BASE_URL=http://localhost:3000
+      - NEXT_PUBLIC_SERVER_BASE_URL=http://localhost:4000
+      - NEXT_PUBLIC_HIGHLIGHTS_BASE_URL=http://localhost:3000
+    depends_on:
+      api:
+        condition: service_healthy
+    # networks:
+    #   - tipi_main_network
+    # labels:
+    #   # Main
+    #   traefik.enable: true
+    #   traefik.http.middlewares.hello-world-web-redirect.redirectscheme.scheme: https
+    #   traefik.http.services.hello-world.loadbalancer.server.port: 8080
+    #   # Web
+    #   traefik.http.routers.hello-world-insecure.rule: Host(`${APP_DOMAIN}`)
+    #   traefik.http.routers.hello-world-insecure.entrypoints: web
+    #   traefik.http.routers.hello-world-insecure.service: hello-world
+    #   traefik.http.routers.hello-world-insecure.middlewares: hello-world-web-redirect
+    #   # Websecure
+    #   traefik.http.routers.hello-world.rule: Host(`${APP_DOMAIN}`)
+    #   traefik.http.routers.hello-world.entrypoints: websecure
+    #   traefik.http.routers.hello-world.service: hello-world
+    #   traefik.http.routers.hello-world.tls.certresolver: myresolver
+    #   # Local domain
+    #   traefik.http.routers.hello-world-local-insecure.rule: Host(`hello-world.${LOCAL_DOMAIN}`)
+    #   traefik.http.routers.hello-world-local-insecure.entrypoints: web
+    #   traefik.http.routers.hello-world-local-insecure.service: hello-world
+    #   traefik.http.routers.hello-world-local-insecure.middlewares: hello-world-web-redirect
+    #   # Local domain secure
+    #   traefik.http.routers.hello-world-local.rule: Host(`hello-world.${LOCAL_DOMAIN}`)
+    #   traefik.http.routers.hello-world-local.entrypoints: websecure
+    #   traefik.http.routers.hello-world-local.service: hello-world
+    #   traefik.http.routers.hello-world-local.tls: true
+
+  content-fetch:
+    image: "jfairbairn/omnivore-content-fetch:latest"
+    container_name: "omnivore-content-fetch"
+    ports:
+      - "9090:8080"
+    environment:
+      - JWT_SECRET=some_secret
+      - VERIFICATION_TOKEN=some_token
+      - REST_BACKEND_ENDPOINT=http://api:8080/api
+    depends_on:
+      api:
+        condition: service_healthy
+
+    # ports:
+    #   - ${APP_PORT}:3000
